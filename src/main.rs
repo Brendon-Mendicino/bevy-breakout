@@ -1,9 +1,12 @@
-use bevy::{math::*, prelude::*, render::view::VisibilitySystems, sprite::collide_aabb::*};
+use std::time::Duration;
+
+use bevy::{math::*, prelude::*, render::camera::ScalingMode, sprite::collide_aabb::*};
 use game_over::GameOverPlugin;
 use game_won::GameWonPlugin;
 use menu::*;
 use powerup::*;
 
+mod game;
 mod game_over;
 mod game_won;
 mod menu;
@@ -12,15 +15,19 @@ mod powerup;
 // Paddle
 const PADDLE_START: Vec2 = Vec2::new(0., -250.);
 const PADDLE_SIZE: Vec2 = Vec2::new(120., 20.);
+const PADDLE_ENLARGED_SIZE: Vec2 = vec2(240.0, 20.);
 const PADDLE_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
 const PADDLE_SPEED: f32 = 500.0;
+const PADDLE_TIMEOUT: f32 = 10.0;
 
 // Ball
 const BALL_COLOR: Color = Color::rgb(0.9, 0.4, 0.2);
 const BALL_START: Vec2 = vec2(-70.0, 1.0);
 const BALL_SIZE: Vec2 = vec2(30.0, 30.0);
+const BALL_ENLARGED_SIZE: Vec2 = vec2(60.0, 60.0);
 const BALL_SPEED: f32 = 400.0;
 const BALL_DIRECTION: Vec2 = vec2(0.5, -0.5);
+const BALL_TIMEOUT: f32 = 10.0;
 
 // Wall
 const WALL_WIDTH: f32 = 1200.0;
@@ -51,7 +58,7 @@ struct Ball {
 }
 
 #[derive(Component, Deref, DerefMut)]
-struct Velocity(Vec2);
+pub struct Velocity(pub Vec2);
 
 #[derive(Component)]
 pub struct Collider {
@@ -62,7 +69,7 @@ pub struct Collider {
 struct GameEntities;
 
 #[derive(Component, Deref, DerefMut)]
-struct PlayerCollider(Collider);
+pub struct PlayerCollider(pub Collider);
 
 #[derive(Component)]
 struct Block;
@@ -82,6 +89,16 @@ struct Scoreboard {
     score: u32,
 }
 
+#[derive(Resource)]
+struct BallEnlargmentTimer {
+    timer: Timer,
+}
+
+#[derive(Resource)]
+struct PaddleEnlargedTimer {
+    timer: Timer,
+}
+
 #[derive(Debug, States, Default, Clone, Eq, PartialEq, Hash)]
 pub enum AppState {
     #[default]
@@ -93,7 +110,13 @@ pub enum AppState {
 
 fn setup(mut commands: Commands) {
     // Camera
-    commands.spawn(Camera2dBundle::default());
+    let mut camera = Camera2dBundle::default();
+    camera.projection.scaling_mode = ScalingMode::AutoMin {
+        min_width: 1280.0,
+        min_height: 720.0,
+    };
+
+    commands.spawn(camera);
 }
 
 fn setup_game(mut commands: Commands) {
@@ -280,33 +303,15 @@ fn apply_velocity(mut query: Query<(&Velocity, &mut Transform)>, time_step: Res<
     }
 }
 
-fn spawn_powerup(commands: &mut Commands, translation: Vec3) {
-    let Some(powerup) = Powerup::next_rng() else { return };
-
-    commands.spawn((
-        SpriteBundle {
-            transform: Transform {
-                translation,
-                ..default()
-            },
-            sprite: Sprite {
-                color: Color::RED,
-                custom_size: Some(Powerup::SIZE),
-                ..default()
-            },
-            ..default()
-        },
-        powerup,
-        PlayerCollider(Collider {
-            size: Powerup::SIZE,
-        }),
-        Velocity(Powerup::SPEED),
-    ));
-}
-
 fn check_ball_collision(
     mut balls: Query<(&Transform, &mut Velocity, &Ball)>,
-    colliders: Query<(Entity, &Transform, &Collider, Option<&Block>, Option<&Paddle>)>,
+    colliders: Query<(
+        Entity,
+        &Transform,
+        &Collider,
+        Option<&Block>,
+        Option<&Paddle>,
+    )>,
     mut scoreboard: ResMut<Scoreboard>,
     mut commands: Commands,
 ) {
@@ -320,7 +325,7 @@ fn check_ball_collision(
             );
 
             let Some(collision) = collision else { continue };
-            
+
             let mut reflect_x = false;
             let mut reflect_y = false;
             let mut inside = false;
@@ -338,7 +343,6 @@ fn check_ball_collision(
                 break;
             }
 
-
             if reflect_x {
                 ball_v.x = -ball_v.x;
             }
@@ -349,7 +353,7 @@ fn check_ball_collision(
             if block.is_some() {
                 scoreboard.score += 1;
                 commands.entity(entity).despawn();
-                spawn_powerup(&mut commands, ball_t.translation);
+                Powerup::spawn_powerup(&mut commands, ball_t.translation);
             }
 
             break;
@@ -370,26 +374,64 @@ fn update_scoreboard(score: Res<Scoreboard>, mut query: Query<&mut Text>) {
     text.sections[1].value = score.score.to_string();
 }
 
-fn check_powerups_out_of_bounds(
-    mut commands: Commands,
-    query: Query<(Entity, &ComputedVisibility), With<Powerup>>,
+fn duplicate_balls(
+    commands: &mut Commands,
+    query_ball: &Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
 ) {
-    for (entity, visibility) in &query {
-        if !visibility.is_visible_in_view() {
-            commands.entity(entity).despawn();
-        }
+    let balls = query_ball
+        .into_iter()
+        .map(|(v, t, _, _)| {
+            (
+                Velocity(-v.0),
+                Ball { size: BALL_SIZE },
+                SpriteBundle {
+                    transform: t.clone(),
+                    sprite: Sprite {
+                        color: BALL_COLOR,
+                        custom_size: Some(BALL_SIZE),
+                        ..default()
+                    },
+                    ..default()
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+
+    commands.spawn_batch(balls);
+}
+
+fn enlarge_paddle(commands: &mut Commands, sprite: &mut Sprite, collider: &mut Collider) {
+    sprite.custom_size = Some(PADDLE_ENLARGED_SIZE);
+    collider.size = PADDLE_ENLARGED_SIZE;
+
+    commands.insert_resource(PaddleEnlargedTimer {
+        timer: Timer::new(Duration::from_secs_f32(PADDLE_TIMEOUT), TimerMode::Once),
+    });
+}
+
+fn enlarge_balls(
+    commands: &mut Commands,
+    query_ball: &mut Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
+) {
+    for (_, _, mut collider, mut sprite) in query_ball {
+        sprite.custom_size = Some(BALL_ENLARGED_SIZE);
+        collider.size = BALL_ENLARGED_SIZE;
     }
+
+    commands.insert_resource(BallEnlargmentTimer {
+        timer: Timer::new(Duration::from_secs_f32(BALL_TIMEOUT), TimerMode::Once),
+    });
 }
 
 fn check_powerups_collision(
     mut commands: Commands,
-    query: Query<(Entity, &Transform, &PlayerCollider)>,
-    query_paddle: Query<(&Transform, &Collider), With<Paddle>>,
-    query_ball: Query<(&Velocity, &Transform), With<Ball>>,
+    query: Query<(Entity, &Transform, &PlayerCollider, &Powerup)>,
+    mut query_paddle: Query<(&Transform, &mut Collider, &mut Sprite), With<Paddle>>,
+    mut query_ball: Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
 ) {
-    let (paddle_transform, paddle_collider) = query_paddle.single();
+    let (paddle_transform, mut paddle_collider, mut paddle_sprite) = query_paddle.single_mut();
 
-    for (entity, transform, collider) in &query {
+    for (entity, transform, collider, powerup) in &query {
         let collision = collide(
             transform.translation,
             collider.size,
@@ -401,26 +443,14 @@ fn check_powerups_collision(
             continue;
         }
 
-        let balls = query_ball
-            .into_iter()
-            .map(|(v, t)| {
-                (
-                    Velocity(-v.0),
-                    Ball { size: BALL_SIZE },
-                    SpriteBundle {
-                        transform: t.clone(),
-                        sprite: Sprite {
-                            color: BALL_COLOR,
-                            custom_size: Some(BALL_SIZE),
-                            ..default()
-                        },
-                        ..default()
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
+        match powerup.class {
+            PowerupClass::DuplicateBall => duplicate_balls(&mut commands, &query_ball),
+            PowerupClass::EnlargeBall => enlarge_balls(&mut commands, &mut query_ball),
+            PowerupClass::EnlargePaddle => {
+                enlarge_paddle(&mut commands, &mut paddle_sprite, &mut paddle_collider)
+            }
+        }
 
-        commands.spawn_batch(balls);
         commands.entity(entity).despawn();
     }
 }
@@ -453,12 +483,68 @@ fn reset_scoreboard(mut score: ResMut<Scoreboard>) {
     score.score = 0;
 }
 
+fn handle_ball_timer(
+    mut commands: Commands,
+    timer: Option<ResMut<BallEnlargmentTimer>>,
+    time: Res<Time>,
+    mut query: Query<(&mut Sprite, &mut Ball)>,
+) {
+    let Some(mut timer) = timer else { return };
+
+    timer.timer.tick(time.delta());
+
+    if !timer.timer.finished() {
+        return;
+    }
+
+    for (mut sprite, mut collider) in &mut query {
+        sprite.custom_size = Some(BALL_SIZE);
+        collider.size = BALL_SIZE;
+    }
+
+    commands.remove_resource::<BallEnlargmentTimer>();
+}
+
+fn handle_paddle_timer(
+    mut commands: Commands,
+    timer: Option<ResMut<PaddleEnlargedTimer>>,
+    time: Res<Time>,
+    mut query: Query<(&mut Sprite, &mut Collider), With<Paddle>>,
+) {
+    let Some(mut timer) = timer else { return };
+
+    timer.timer.tick(time.delta());
+
+    if !timer.timer.finished() {
+        return;
+    }
+
+    let (mut sprite, mut collider) = query.single_mut();
+    sprite.custom_size = Some(PADDLE_SIZE);
+    collider.size = PADDLE_SIZE;
+
+    commands.remove_resource::<PaddleEnlargedTimer>();
+}
+
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Breakout".to_string(),
+                        resizable: false,
+                        resolution: (800.0, 600.0).into(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_state::<AppState>()
         .add_plugins(GameOverPlugin)
         .add_plugins(GameWonPlugin)
+        .add_plugins(PowerupPlugin)
         .insert_resource(ClearColor(Color::AZURE))
         .insert_resource(Scoreboard { score: 0 })
         .add_systems(Startup, setup)
@@ -472,7 +558,8 @@ fn main() {
             Update,
             (
                 bevy::window::close_on_esc,
-                update_scoreboard.run_if(in_state(AppState::Game)),
+                (update_scoreboard, handle_ball_timer, handle_paddle_timer)
+                    .run_if(in_state(AppState::Game)),
             ),
         )
         .add_systems(OnEnter(AppState::Game), setup_game)
@@ -500,12 +587,6 @@ fn main() {
                 check_game_won.after(check_ball_out_of_bound),
             )
                 .run_if(in_state(AppState::Game)),
-        )
-        .add_systems(
-            PostUpdate,
-            check_powerups_out_of_bounds
-                .run_if(in_state(AppState::Game))
-                .after(VisibilitySystems::CheckVisibility),
         )
         .run();
 }
