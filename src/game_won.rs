@@ -38,7 +38,7 @@ fn setup_game_over(mut commands: Commands) {
         .with_children(|parent| {
             parent.spawn(
                 TextBundle::from_section(
-                    "You Won Nothing!🏆️🏆️\nPress \"Enter\" to replay!",
+                    "You Won Nothing!\nPress \"Enter\" to replay!",
                     TextStyle {
                         font_size: 60.0,
                         color: Color::rgb(0.8, 0.8, 0.8),
@@ -47,6 +47,7 @@ fn setup_game_over(mut commands: Commands) {
                 )
                 .with_style(Style {
                     justify_content: JustifyContent::Center,
+                    justify_self: JustifySelf::Center,
                     align_items: AlignItems::Center,
                     ..default()
                 }),

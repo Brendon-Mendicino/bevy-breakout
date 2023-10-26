@@ -1,14 +1,395 @@
-// use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
-// use game_over::GameOverPlugin;
-// use game_won::GameWonPlugin;
-// use menu::*;
-// use powerup::*;
+use std::time::Duration;
 
-pub struct Game;
+use crate::AppState;
+use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
+use powerup::*;
 
-// impl Plugin for Game {
-//     fn build(&self, app: &mut App) {
-//         app
-//             .
-//     }
-// }
+use self::ball::{Ball, BallBundle, BallEnlargmentTimer, BallPlugin};
+use self::paddle::{Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
+
+mod ball;
+mod paddle;
+mod powerup;
+
+pub struct GamePlugin;
+
+impl Plugin for GamePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((PowerupPlugin, BallPlugin, PaddlePlugin))
+            .add_systems(OnEnter(AppState::Game), setup_game)
+            .add_systems(
+                Update,
+                (
+                    bevy::window::close_on_esc,
+                    (update_scoreboard,).run_if(in_state(AppState::Game)),
+                ),
+            )
+            .add_systems(
+                FixedUpdate,
+                (
+                    apply_velocity,
+                    check_ball_collision.after(apply_velocity),
+                    check_ball_out_of_bound.after(apply_velocity),
+                    check_powerups_collision.after(apply_velocity),
+                    check_game_over.after(check_ball_out_of_bound),
+                    check_game_won.after(check_ball_out_of_bound),
+                )
+                    .run_if(in_state(AppState::Game)),
+            )
+            .add_systems(
+                OnExit(AppState::Game),
+                (
+                    cleanup_game,
+                    cleanup_component::<Paddle>,
+                    cleanup_component::<Block>,
+                    cleanup_component::<Powerup>,
+                    cleanup_component::<Wall>,
+                    cleanup_component::<Ball>,
+                    cleanup_component::<Text>,
+                ),
+            );
+    }
+}
+
+// Wall
+const WALL_WIDTH: f32 = 1200.0;
+const WALL_HEIGHT: f32 = 600.0;
+const WALL_THICKNESS: f32 = 30.0;
+
+// Blocks
+const BLOCK_HEIGHT: i32 = 10;
+const BLOCK_WIDTH: i32 = 12;
+const BLOCK_SIZE: Vec2 = vec2(
+    ((WALL_WIDTH - WALL_THICKNESS - BLOCK_PADDING) / BLOCK_WIDTH as f32) - BLOCK_PADDING,
+    25.0,
+);
+const BLOCK_PADDING: f32 = 5.0;
+
+// Scoreboard
+const SCOREBOARD_FONT_SIZE: f32 = 40.0;
+const SCOREBOARD_TEXT_PADDING: Val = Val::Px(5.0);
+const TEXT_COLOR: Color = Color::rgb(0.5, 0.5, 1.0);
+const SCORE_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
+
+#[derive(Component, Clone, Deref, DerefMut)]
+pub struct Velocity(pub Vec2);
+
+#[derive(Component, Clone)]
+pub struct Collider {
+    pub size: Vec2,
+}
+
+#[derive(Component)]
+struct GameEntities;
+
+#[derive(Component, Deref, DerefMut)]
+pub struct PlayerCollider(pub Collider);
+
+#[derive(Component)]
+pub struct Block;
+
+#[derive(Component)]
+pub struct Wall;
+
+#[derive(Bundle)]
+struct WallBundle {
+    sprite: SpriteBundle,
+    collider: Collider,
+    wall: Wall,
+}
+
+#[derive(Resource, Clone, Copy)]
+struct Scoreboard {
+    score: u32,
+}
+
+fn setup_game(mut commands: Commands) {
+    // Paddle
+    commands.spawn(PaddleBundle::default());
+
+    // Ball
+    commands.spawn(BallBundle::default());
+
+    // Walls
+    let top_bot = vec2(WALL_WIDTH, WALL_THICKNESS);
+    let left_right = vec2(WALL_THICKNESS, WALL_HEIGHT);
+    let walls = [
+        (
+            top_bot + vec2(left_right[0], 0.0),
+            vec2(0.0, 0.5 * left_right[1]),
+        ),
+        (
+            top_bot + vec2(left_right[0], 0.0),
+            vec2(0.0, -0.5 * left_right[1]),
+        ),
+        (
+            left_right + vec2(0.0, top_bot[1]),
+            vec2(0.5 * top_bot[0], 0.0),
+        ),
+        (
+            left_right + vec2(0.0, top_bot[1]),
+            vec2(-0.5 * top_bot[0], 0.0),
+        ),
+    ];
+
+    for wall in walls {
+        commands.spawn(WallBundle {
+            sprite: SpriteBundle {
+                transform: Transform {
+                    translation: wall.1.extend(0.0),
+                    ..default()
+                },
+                sprite: Sprite {
+                    color: Color::SILVER,
+                    custom_size: Some(wall.0),
+                    ..default()
+                },
+                ..default()
+            },
+            collider: Collider { size: wall.0 },
+            wall: Wall,
+        });
+    }
+
+    spawn_blocks(&mut commands);
+
+    // Scoreboard
+    commands.insert_resource(Scoreboard { score: 0 });
+    commands.spawn(
+        TextBundle::from_sections([
+            TextSection::new(
+                "Score: ",
+                TextStyle {
+                    font_size: SCOREBOARD_FONT_SIZE,
+                    color: TEXT_COLOR,
+                    ..default()
+                },
+            ),
+            TextSection::from_style(TextStyle {
+                font_size: SCOREBOARD_FONT_SIZE,
+                color: SCORE_COLOR,
+                ..default()
+            }),
+        ])
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            top: SCOREBOARD_TEXT_PADDING,
+            left: SCOREBOARD_TEXT_PADDING,
+            ..default()
+        }),
+    );
+}
+
+fn cleanup_game(mut commands: Commands) {
+    commands.remove_resource::<Scoreboard>();
+}
+
+fn spawn_blocks(commands: &mut Commands) {
+    for w in 0..BLOCK_WIDTH {
+        for h in 0..BLOCK_HEIGHT {
+            let mut pos = vec3(
+                w as f32 * (BLOCK_SIZE.x + BLOCK_PADDING),
+                -h as f32 * (BLOCK_SIZE.y + BLOCK_PADDING),
+                0.0,
+            );
+
+            let mut wall_top_right = vec3(
+                (-WALL_WIDTH as f32 + WALL_THICKNESS) * 0.5,
+                (WALL_HEIGHT as f32 - WALL_THICKNESS) * 0.5,
+                0.0,
+            );
+
+            // Add a half of a block size
+            wall_top_right += vec3(
+                BLOCK_SIZE.x * 0.5 + BLOCK_PADDING,
+                -(BLOCK_SIZE.y * 0.5 + BLOCK_PADDING),
+                0.0,
+            );
+
+            pos += wall_top_right;
+
+            commands.spawn((
+                SpriteBundle {
+                    transform: Transform {
+                        translation: pos,
+                        ..default()
+                    },
+                    sprite: Sprite {
+                        color: Color::NAVY,
+                        custom_size: Some(BLOCK_SIZE),
+                        ..default()
+                    },
+                    ..default()
+                },
+                Block,
+                Collider { size: BLOCK_SIZE },
+            ));
+        }
+    }
+}
+
+fn apply_velocity(mut query: Query<(&Velocity, &mut Transform)>, time_step: Res<FixedTime>) {
+    let dt = time_step.period.as_secs_f32();
+    for (velocity, mut transform) in &mut query {
+        transform.translation.x += velocity.x * dt;
+        transform.translation.y += velocity.y * dt;
+    }
+}
+
+fn check_ball_collision(
+    mut balls: Query<(&Transform, &mut Velocity, &Ball)>,
+    colliders: Query<(
+        Entity,
+        &Transform,
+        &Collider,
+        Option<&Block>,
+        Option<&Paddle>,
+    )>,
+    mut scoreboard: ResMut<Scoreboard>,
+    mut commands: Commands,
+) {
+    for (entity, transform, collider, block, paddle) in &colliders {
+        for (ball_t, mut ball_v, ball) in &mut balls {
+            let collision = collide(
+                ball_t.translation,
+                ball.size,
+                transform.translation,
+                collider.size,
+            );
+
+            let Some(collision) = collision else { continue };
+
+            let mut reflect_x = false;
+            let mut reflect_y = false;
+            let mut inside = false;
+            match collision {
+                Collision::Bottom => reflect_y = ball_v.y > 0.0,
+                Collision::Top => reflect_y = ball_v.y < 0.0,
+                Collision::Right => reflect_x = ball_v.x < 0.0,
+                Collision::Left => reflect_x = ball_v.x > 0.0,
+                Collision::Inside => inside = true,
+            }
+
+            if paddle.is_some() && !inside {
+                let dir = ball_t.translation - transform.translation;
+                ball_v.0 = dir.xy().normalize() * ball_v.length();
+                break;
+            }
+
+            if reflect_x {
+                ball_v.x = -ball_v.x;
+            }
+            if reflect_y {
+                ball_v.y = -ball_v.y;
+            }
+
+            if block.is_some() {
+                scoreboard.score += 1;
+                commands.entity(entity).despawn();
+                Powerup::spawn_powerup(&mut commands, ball_t.translation);
+            }
+
+            break;
+        }
+    }
+}
+
+fn update_scoreboard(score: Res<Scoreboard>, mut query: Query<&mut Text>) {
+    let mut text = query.single_mut();
+    text.sections[1].value = score.score.to_string();
+}
+
+fn duplicate_balls(
+    commands: &mut Commands,
+    query_ball: &Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
+) {
+    let balls = query_ball
+        .into_iter()
+        .map(|(v, t, _, _)| BallBundle::from_trans_vel(*t, Velocity(-v.0)))
+        .collect::<Vec<_>>();
+
+    commands.spawn_batch(balls);
+}
+
+fn enlarge_paddle(commands: &mut Commands, sprite: &mut Sprite, collider: &mut Collider) {
+    sprite.custom_size = Some(Paddle::ENLARGED_SIZE);
+    collider.size = Paddle::ENLARGED_SIZE;
+
+    commands.insert_resource(PaddleEnlargedTimer::default());
+}
+
+fn enlarge_balls(
+    commands: &mut Commands,
+    query_ball: &mut Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
+) {
+    for (_, _, mut collider, mut sprite) in query_ball {
+        sprite.custom_size = Some(Ball::ENLARGED_SIZE);
+        collider.size = Ball::ENLARGED_SIZE;
+    }
+
+    commands.insert_resource(BallEnlargmentTimer::default());
+}
+
+fn check_powerups_collision(
+    mut commands: Commands,
+    query: Query<(Entity, &Transform, &PlayerCollider, &Powerup)>,
+    mut query_paddle: Query<(&Transform, &mut Collider, &mut Sprite), With<Paddle>>,
+    mut query_ball: Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
+) {
+    let (paddle_transform, mut paddle_collider, mut paddle_sprite) = query_paddle.single_mut();
+
+    for (entity, transform, collider, powerup) in &query {
+        let collision = collide(
+            transform.translation,
+            collider.size,
+            paddle_transform.translation,
+            paddle_collider.size,
+        );
+
+        if collision.is_none() {
+            continue;
+        }
+
+        match powerup.class {
+            PowerupClass::DuplicateBall => duplicate_balls(&mut commands, &query_ball),
+            PowerupClass::EnlargeBall => enlarge_balls(&mut commands, &mut query_ball),
+            PowerupClass::EnlargePaddle => {
+                enlarge_paddle(&mut commands, &mut paddle_sprite, &mut paddle_collider)
+            }
+        }
+
+        commands.entity(entity).despawn();
+    }
+}
+
+fn check_game_over(mut state: ResMut<NextState<AppState>>, query: Query<(), With<Ball>>) {
+    if !query.is_empty() {
+        return;
+    }
+
+    state.set(AppState::GameOver);
+}
+
+fn check_game_won(mut state: ResMut<NextState<AppState>>, query: Query<(), With<Block>>) {
+    if !query.is_empty() {
+        return;
+    }
+    state.set(AppState::GameWon);
+}
+
+fn cleanup_component<C>(mut commands: Commands, query: Query<Entity, With<C>>)
+where
+    C: Component,
+{
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn check_ball_out_of_bound(mut commands: Commands, query: Query<(Entity, &Transform), With<Ball>>) {
+    for (entity, Transform { translation, .. }) in &query {
+        if translation.y < -270.0 {
+            commands.entity(entity).despawn();
+        }
+    }
+}

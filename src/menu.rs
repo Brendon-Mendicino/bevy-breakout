@@ -11,7 +11,20 @@ const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
 
-pub fn setup_menu(mut commands: Commands) {
+pub struct MenuPlugin;
+
+impl Plugin for MenuPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(AppState::MainMenu), setup_menu)
+            .add_systems(
+                Update,
+                (menu_button, menu_key).run_if(in_state(AppState::MainMenu)),
+            )
+            .add_systems(OnExit(AppState::MainMenu), cleanup_menu);
+    }
+}
+
+fn setup_menu(mut commands: Commands) {
     let button_entity = commands
         .spawn(NodeBundle {
             style: Style {
@@ -64,7 +77,7 @@ pub fn setup_menu(mut commands: Commands) {
     commands.insert_resource(MenuData { button_entity });
 }
 
-pub fn menu_button(
+fn menu_button(
     mut next_state: ResMut<NextState<AppState>>,
     mut interaction_query: Query<
         (&Interaction, &mut BackgroundColor),
@@ -87,12 +100,12 @@ pub fn menu_button(
     }
 }
 
-pub fn menu_key(mut next_state: ResMut<NextState<AppState>>, input: Res<Input<KeyCode>>) {
+fn menu_key(mut next_state: ResMut<NextState<AppState>>, input: Res<Input<KeyCode>>) {
     if input.pressed(KeyCode::Return) {
         next_state.set(AppState::Game)
     }
 }
 
-pub fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>) {
+fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>) {
     commands.entity(menu_data.button_entity).despawn_recursive();
 }

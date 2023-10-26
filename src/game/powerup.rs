@@ -1,7 +1,7 @@
 use bevy::{prelude::*, render::view::VisibilitySystems};
 use rand::prelude::*;
 
-use crate::{AppState, Collider, PlayerCollider, Velocity};
+use super::*;
 
 const POWERUP_RNGS: [(PowerupClass, f32); 3] = [
     (PowerupClass::DuplicateBall, 0.2),
