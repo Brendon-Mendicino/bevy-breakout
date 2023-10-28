@@ -69,6 +69,7 @@ impl Plugin for PaddlePlugin {
 fn move_paddle(
     mut query: Query<(&mut Transform, &Collider), With<Paddle>>,
     input: Res<Input<KeyCode>>,
+    main_box: Res<MainBox>,
     time_step: Res<FixedTime>,
 ) {
     let (mut transform, collider) = query.single_mut();
@@ -87,8 +88,8 @@ fn move_paddle(
     transform.translation.x += direction;
 
     transform.translation.x = transform.translation.x.clamp(
-        -(WALL_WIDTH - WALL_THICKNESS - collider.size.x) * 0.5,
-        (WALL_WIDTH - WALL_THICKNESS - collider.size.x) * 0.5,
+        -(main_box.size.x - collider.size.x) * 0.5,
+        (main_box.size.x - collider.size.x) * 0.5,
     );
 }
 

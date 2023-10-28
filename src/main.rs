@@ -21,10 +21,11 @@ pub enum AppState {
 fn setup(mut commands: Commands) {
     // Camera
     let mut camera = Camera2dBundle::default();
-    camera.projection.scaling_mode = ScalingMode::AutoMin {
-        min_width: 1280.0,
-        min_height: 720.0,
-    };
+    // camera.projection.scaling_mode = ScalingMode::AutoMin {
+    //     min_width: 1280.0,
+    //     min_height: 720.0,
+    // };
+    camera.projection.scaling_mode = ScalingMode::Fixed { width: 1280.0, height: 720.0 };
 
     commands.spawn(camera);
 }
@@ -38,7 +39,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "Breakout".to_string(),
                         resizable: false,
-                        resolution: (1200.0, 800.0).into(),
+                        resolution: (1280.0, 720.0).into(),
                         ..default()
                     }),
                     ..default()

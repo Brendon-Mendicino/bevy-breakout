@@ -21,6 +21,9 @@ impl Ball {
     pub const TIMEOUT: f32 = 10.0;
 }
 
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct BallCollision(pub Handle<AudioSource>);
+
 #[derive(Bundle, Clone)]
 pub struct BallBundle {
     pub ball: Ball,
@@ -81,8 +84,15 @@ pub struct BallPlugin;
 
 impl Plugin for BallPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (handle_ball_timer).run_if(in_state(AppState::Game)));
+        app
+            .add_systems(Startup, setup_ball)
+            .add_systems(Update, (handle_ball_timer).run_if(in_state(AppState::Game)));
     }
+}
+
+fn setup_ball(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let sound = asset_server.load("audio/ball_bounce.ogg");
+    commands.insert_resource(BallCollision(sound));
 }
 
 fn handle_ball_timer(

@@ -4,7 +4,7 @@ use crate::AppState;
 use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
 use powerup::*;
 
-use self::ball::{Ball, BallBundle, BallEnlargmentTimer, BallPlugin};
+use self::ball::{Ball, BallBundle, BallEnlargmentTimer, BallPlugin, BallCollision};
 use self::paddle::{Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
 
 mod ball;
@@ -88,7 +88,7 @@ pub struct PlayerCollider(pub Collider);
 #[derive(Component)]
 pub struct Block;
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct Wall;
 
 #[derive(Bundle)]
@@ -96,6 +96,11 @@ struct WallBundle {
     sprite: SpriteBundle,
     collider: Collider,
     wall: Wall,
+}
+
+#[derive(Resource, Clone, Copy)]
+pub struct MainBox {
+    pub size: Vec2,
 }
 
 #[derive(Resource, Clone, Copy)]
@@ -151,7 +156,16 @@ fn setup_game(mut commands: Commands) {
         });
     }
 
-    spawn_blocks(&mut commands);
+    let main_box = MainBox {
+        size: vec2(
+            WALL_WIDTH as f32 - WALL_THICKNESS,
+            WALL_HEIGHT as f32 - WALL_THICKNESS,
+        ),
+    };
+    commands.insert_resource(main_box);
+
+    // Blocks
+    spawn_blocks(&mut commands, main_box);
 
     // Scoreboard
     commands.insert_resource(Scoreboard { score: 0 });
@@ -184,7 +198,7 @@ fn cleanup_game(mut commands: Commands) {
     commands.remove_resource::<Scoreboard>();
 }
 
-fn spawn_blocks(commands: &mut Commands) {
+fn spawn_blocks(commands: &mut Commands, main_box: MainBox) {
     for w in 0..BLOCK_WIDTH {
         for h in 0..BLOCK_HEIGHT {
             let mut pos = vec3(
@@ -193,11 +207,7 @@ fn spawn_blocks(commands: &mut Commands) {
                 0.0,
             );
 
-            let mut wall_top_right = vec3(
-                (-WALL_WIDTH as f32 + WALL_THICKNESS) * 0.5,
-                (WALL_HEIGHT as f32 - WALL_THICKNESS) * 0.5,
-                0.0,
-            );
+            let mut wall_top_right = 0.5 * vec3(-main_box.size.x, main_box.size.y, 0.0);
 
             // Add a half of a block size
             wall_top_right += vec3(
@@ -245,6 +255,7 @@ fn check_ball_collision(
         Option<&Block>,
         Option<&Paddle>,
     )>,
+    collision_sound: Res<BallCollision>,
     mut scoreboard: ResMut<Scoreboard>,
     mut commands: Commands,
 ) {
@@ -269,6 +280,12 @@ fn check_ball_collision(
                 Collision::Left => reflect_x = ball_v.x > 0.0,
                 Collision::Inside => inside = true,
             }
+
+            // Play bounce sound
+            commands.spawn(AudioBundle {
+                source: collision_sound.clone(),
+                settings: PlaybackSettings::DESPAWN,
+            });
 
             if paddle.is_some() && !inside {
                 let dir = ball_t.translation - transform.translation;
@@ -386,9 +403,13 @@ where
     }
 }
 
-fn check_ball_out_of_bound(mut commands: Commands, query: Query<(Entity, &Transform), With<Ball>>) {
-    for (entity, Transform { translation, .. }) in &query {
-        if translation.y < -270.0 {
+fn check_ball_out_of_bound(
+    mut commands: Commands,
+    main_box: Res<MainBox>,
+    query: Query<(Entity, &Transform, &Ball)>,
+) {
+    for (entity, Transform { translation, .. }, Ball { size }) in &query {
+        if translation.y - 0.5 * size.y < -0.5 * main_box.size.y {
             commands.entity(entity).despawn();
         }
     }

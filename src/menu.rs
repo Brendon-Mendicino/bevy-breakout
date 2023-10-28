@@ -37,38 +37,11 @@ fn setup_menu(mut commands: Commands) {
             ..default()
         })
         .with_children(|parent| {
-            parent
-                .spawn(ButtonBundle {
-                    style: Style {
-                        width: Val::Px(150.),
-                        height: Val::Px(65.),
-
-                        // horizontally center child text
-                        justify_content: JustifyContent::Center,
-                        // vertically center child text
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: NORMAL_BUTTON.into(),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Play",
-                        TextStyle {
-                            font_size: 40.0,
-                            color: Color::rgb(0.9, 0.9, 0.9),
-                            ..default()
-                        },
-                    ));
-                });
-
             parent.spawn(TextBundle::from_section(
                 "Press \"Enter\" to Play!",
                 TextStyle {
                     font_size: 60.0,
                     color: Color::rgb(0.8, 0.8, 0.8),
-
                     ..default()
                 },
             ));
