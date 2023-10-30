@@ -4,7 +4,7 @@ use crate::AppState;
 use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
 use powerup::*;
 
-use self::ball::{Ball, BallBundle, BallEnlargmentTimer, BallPlugin, BallCollision};
+use self::ball::{Ball, BallBundle, BallCollision, BallEnlargmentTimer, BallPlugin};
 use self::paddle::{Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
 
 mod ball;

@@ -84,8 +84,7 @@ pub struct BallPlugin;
 
 impl Plugin for BallPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_systems(Startup, setup_ball)
+        app.add_systems(Startup, setup_ball)
             .add_systems(Update, (handle_ball_timer).run_if(in_state(AppState::Game)));
     }
 }

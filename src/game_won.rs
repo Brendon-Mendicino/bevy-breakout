@@ -24,34 +24,31 @@ fn reload_game(input: Res<Input<KeyCode>>, mut state: ResMut<NextState<AppState>
 }
 
 fn setup_game_over(mut commands: Commands) {
+    let style = TextStyle {
+        font_size: 60.0,
+        color: Color::rgb(0.8, 0.8, 0.8),
+        ..default()
+    };
+
     let text = commands
         .spawn(NodeBundle {
             style: Style {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 ..default()
             },
             ..default()
         })
         .with_children(|parent| {
-            parent.spawn(
-                TextBundle::from_section(
-                    "You Won Nothing!\nPress \"Enter\" to replay!",
-                    TextStyle {
-                        font_size: 60.0,
-                        color: Color::rgb(0.8, 0.8, 0.8),
-                        ..default()
-                    },
-                )
-                .with_style(Style {
-                    justify_content: JustifyContent::Center,
-                    justify_self: JustifySelf::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                }),
-            );
+            parent.spawn(TextBundle::from_section("You Won Nothing!", style.clone()));
+
+            parent.spawn(TextBundle::from_section(
+                "Press \"Enter\" to replay!",
+                style,
+            ));
         })
         .id();
 
