@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::view::VisibilitySystems};
+use bevy::prelude::*;
 use rand::prelude::*;
 
 use super::*;
@@ -73,7 +73,9 @@ impl Powerup {
     }
 
     pub fn spawn_powerup(commands: &mut Commands, translation: Vec3) {
-        let Some(powerup) = Powerup::next_rng() else { return };
+        let Some(powerup) = Powerup::next_rng() else {
+            return;
+        };
 
         commands.spawn(Self::get_powerup_bundle(powerup, translation));
     }
@@ -85,10 +87,10 @@ impl Plugin for PowerupPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, (update_powerups).run_if(in_state(AppState::Game)))
             .add_systems(
-                PostUpdate,
+                FixedUpdate,
                 check_powerups_out_of_bounds
-                    .run_if(in_state(AppState::Game))
-                    .after(VisibilitySystems::CheckVisibility),
+                    .after(apply_velocity)
+                    .run_if(in_state(AppState::Game)),
             );
     }
 }
@@ -102,10 +104,13 @@ fn update_powerups(time: Res<Time>, mut query: Query<&mut Transform, With<Poweru
 
 fn check_powerups_out_of_bounds(
     mut commands: Commands,
-    query: Query<(Entity, &ComputedVisibility), With<Powerup>>,
+    main_box: Res<MainBox>,
+    query: Query<(Entity, &Transform), With<Powerup>>,
 ) {
-    for (entity, visibility) in &query {
-        if !visibility.is_visible_in_view() {
+    let min_y = -0.5 * main_box.size.y;
+
+    for (entity, transform) in &query {
+        if transform.translation.y < min_y {
             commands.entity(entity).despawn();
         }
     }

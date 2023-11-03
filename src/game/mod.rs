@@ -5,9 +5,13 @@ use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
 use powerup::*;
 
 use self::ball::{Ball, BallBundle, BallCollision, BallEnlargmentTimer, BallPlugin};
+use self::block::{block_go_down, Block, BlockBundle, BlockPlugin};
+use self::dmg_text::{spawn_dmg_text, DmgTextPlugin};
 use self::paddle::{Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
 
 mod ball;
+mod block;
+mod dmg_text;
 mod paddle;
 mod powerup;
 
@@ -15,7 +19,7 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PowerupPlugin, BallPlugin, PaddlePlugin))
+        app.add_plugins((PowerupPlugin, BallPlugin, PaddlePlugin, BlockPlugin, DmgTextPlugin))
             .add_systems(OnEnter(AppState::Game), setup_game)
             .add_systems(
                 Update,
@@ -27,10 +31,15 @@ impl Plugin for GamePlugin {
             .add_systems(
                 FixedUpdate,
                 (
+                    block_go_down,
                     apply_velocity,
-                    check_ball_collision.after(apply_velocity),
-                    check_ball_out_of_bound.after(apply_velocity),
-                    check_powerups_collision.after(apply_velocity),
+                    (
+                        check_ball_collision,
+                        check_ball_out_of_bound,
+                        check_powerups_collision,
+                    )
+                        .after(apply_velocity)
+                        .after(block_go_down),
                     check_game_over.after(check_ball_out_of_bound),
                     check_game_won.after(check_ball_out_of_bound),
                 )
@@ -56,15 +65,6 @@ const WALL_WIDTH: f32 = 1200.0;
 const WALL_HEIGHT: f32 = 600.0;
 const WALL_THICKNESS: f32 = 30.0;
 
-// Blocks
-const BLOCK_HEIGHT: i32 = 10;
-const BLOCK_WIDTH: i32 = 12;
-const BLOCK_SIZE: Vec2 = vec2(
-    ((WALL_WIDTH - WALL_THICKNESS - BLOCK_PADDING) / BLOCK_WIDTH as f32) - BLOCK_PADDING,
-    25.0,
-);
-const BLOCK_PADDING: f32 = 5.0;
-
 // Scoreboard
 const SCOREBOARD_FONT_SIZE: f32 = 40.0;
 const SCOREBOARD_TEXT_PADDING: Val = Val::Px(5.0);
@@ -73,6 +73,12 @@ const SCORE_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
 
 #[derive(Component, Clone, Deref, DerefMut)]
 pub struct Velocity(pub Vec2);
+
+#[derive(Component, Clone, Deref, DerefMut)]
+pub struct Health(pub u32);
+
+#[derive(Component, Clone, Deref, DerefMut)]
+pub struct Attack(pub u32);
 
 #[derive(Component, Clone)]
 pub struct Collider {
@@ -84,9 +90,6 @@ struct GameEntities;
 
 #[derive(Component, Deref, DerefMut)]
 pub struct PlayerCollider(pub Collider);
-
-#[derive(Component)]
-pub struct Block;
 
 #[derive(Component, Clone)]
 pub struct Wall;
@@ -102,6 +105,9 @@ struct WallBundle {
 pub struct MainBox {
     pub size: Vec2,
 }
+
+#[derive(Component, Clone)]
+pub struct ScoreboardText;
 
 #[derive(Resource, Clone, Copy)]
 struct Scoreboard {
@@ -167,9 +173,11 @@ fn setup_game(mut commands: Commands) {
     // Blocks
     spawn_blocks(&mut commands, main_box);
 
+    // TODO: move this in his file
     // Scoreboard
     commands.insert_resource(Scoreboard { score: 0 });
-    commands.spawn(
+    commands.spawn((
+        ScoreboardText,
         TextBundle::from_sections([
             TextSection::new(
                 "Score: ",
@@ -191,6 +199,7 @@ fn setup_game(mut commands: Commands) {
             left: SCOREBOARD_TEXT_PADDING,
             ..default()
         }),
+    )
     );
 }
 
@@ -199,11 +208,11 @@ fn cleanup_game(mut commands: Commands) {
 }
 
 fn spawn_blocks(commands: &mut Commands, main_box: MainBox) {
-    for w in 0..BLOCK_WIDTH {
-        for h in 0..BLOCK_HEIGHT {
+    for w in 0..Block::WIDTH {
+        for h in 0..Block::HEIGHT {
             let mut pos = vec3(
-                w as f32 * (BLOCK_SIZE.x + BLOCK_PADDING),
-                -h as f32 * (BLOCK_SIZE.y + BLOCK_PADDING),
+                w as f32 * (Block::SIZE.x + Block::PADDING),
+                -h as f32 * (Block::SIZE.y + Block::PADDING),
                 0.0,
             );
 
@@ -211,29 +220,14 @@ fn spawn_blocks(commands: &mut Commands, main_box: MainBox) {
 
             // Add a half of a block size
             wall_top_right += vec3(
-                BLOCK_SIZE.x * 0.5 + BLOCK_PADDING,
-                -(BLOCK_SIZE.y * 0.5 + BLOCK_PADDING),
+                Block::SIZE.x * 0.5 + Block::PADDING,
+                -(Block::SIZE.y * 0.5 + Block::PADDING),
                 0.0,
             );
 
             pos += wall_top_right;
 
-            commands.spawn((
-                SpriteBundle {
-                    transform: Transform {
-                        translation: pos,
-                        ..default()
-                    },
-                    sprite: Sprite {
-                        color: Color::NAVY,
-                        custom_size: Some(BLOCK_SIZE),
-                        ..default()
-                    },
-                    ..default()
-                },
-                Block,
-                Collider { size: BLOCK_SIZE },
-            ));
+            commands.spawn(BlockBundle::from_translation(pos));
         }
     }
 }
@@ -247,11 +241,12 @@ fn apply_velocity(mut query: Query<(&Velocity, &mut Transform)>, time_step: Res<
 }
 
 fn check_ball_collision(
-    mut balls: Query<(&Transform, &mut Velocity, &Ball)>,
-    colliders: Query<(
+    mut balls: Query<(&Transform, &mut Velocity, &Attack, &Ball)>,
+    mut colliders: Query<(
         Entity,
         &Transform,
         &Collider,
+        Option<&mut Health>,
         Option<&Block>,
         Option<&Paddle>,
     )>,
@@ -259,8 +254,8 @@ fn check_ball_collision(
     mut scoreboard: ResMut<Scoreboard>,
     mut commands: Commands,
 ) {
-    for (entity, transform, collider, block, paddle) in &colliders {
-        for (ball_t, mut ball_v, ball) in &mut balls {
+    for (entity, transform, collider, mut health, block, paddle) in &mut colliders {
+        for (ball_t, mut ball_v, attack, ball) in &mut balls {
             let collision = collide(
                 ball_t.translation,
                 ball.size,
@@ -301,6 +296,18 @@ fn check_ball_collision(
             }
 
             if block.is_some() {
+                /* If the health is not zero continue with the ball iteration */
+                let Some(ref mut health) = health else {
+                    unreachable!()
+                };
+
+                spawn_dmg_text(&mut commands, ball_t.translation, 1);
+
+                if ***health > **attack {
+                    ***health -= **attack;
+                    continue;
+                }
+
                 scoreboard.score += 1;
                 commands.entity(entity).despawn();
                 Powerup::spawn_powerup(&mut commands, ball_t.translation);
@@ -311,7 +318,7 @@ fn check_ball_collision(
     }
 }
 
-fn update_scoreboard(score: Res<Scoreboard>, mut query: Query<&mut Text>) {
+fn update_scoreboard(score: Res<Scoreboard>, mut query: Query<&mut Text, With<ScoreboardText>>) {
     let mut text = query.single_mut();
     text.sections[1].value = score.score.to_string();
 }

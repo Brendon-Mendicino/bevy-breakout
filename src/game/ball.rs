@@ -4,7 +4,7 @@ use bevy::{math::*, prelude::*};
 
 use crate::AppState;
 
-use super::Velocity;
+use super::*;
 
 #[derive(Component, Clone)]
 pub struct Ball {
@@ -28,6 +28,7 @@ pub struct BallCollision(pub Handle<AudioSource>);
 pub struct BallBundle {
     pub ball: Ball,
     pub velocity: Velocity,
+    pub attack: Attack,
     pub sprite: SpriteBundle,
 }
 
@@ -53,6 +54,7 @@ impl Default for BallBundle {
     fn default() -> Self {
         Self {
             ball: Ball { size: Ball::SIZE },
+            attack: Attack(1),
             velocity: Velocity(Ball::SPEED * Ball::DIRECTION),
             sprite: SpriteBundle {
                 transform: Transform::from_translation(Ball::START.extend(0.0)),
