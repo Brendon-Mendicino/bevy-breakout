@@ -70,7 +70,7 @@ fn move_paddle(
     mut query: Query<(&mut Transform, &Collider), With<Paddle>>,
     input: Res<Input<KeyCode>>,
     main_box: Res<MainBox>,
-    time_step: Res<FixedTime>,
+    time: Res<Time>,
 ) {
     let (mut transform, collider) = query.single_mut();
     let mut direction = 0.0;
@@ -83,7 +83,7 @@ fn move_paddle(
         direction += 1.0;
     }
 
-    direction = direction * Paddle::SPEED * time_step.period.as_secs_f32();
+    direction = direction * Paddle::SPEED * time.delta_seconds();
 
     transform.translation.x += direction;
 

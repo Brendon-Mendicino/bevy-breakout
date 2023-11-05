@@ -232,8 +232,8 @@ fn spawn_blocks(commands: &mut Commands, main_box: MainBox) {
     }
 }
 
-fn apply_velocity(mut query: Query<(&Velocity, &mut Transform)>, time_step: Res<FixedTime>) {
-    let dt = time_step.period.as_secs_f32();
+fn apply_velocity(mut query: Query<(&Velocity, &mut Transform)>, time: Res<Time>) {
+    let dt = time.delta_seconds();
     for (velocity, mut transform) in &mut query {
         transform.translation.x += velocity.x * dt;
         transform.translation.y += velocity.y * dt;

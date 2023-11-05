@@ -34,6 +34,7 @@ fn setup_game_over(mut commands: Commands) {
         .spawn(NodeBundle {
             style: Style {
                 width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
