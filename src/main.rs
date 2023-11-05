@@ -1,9 +1,11 @@
-use bevy::{prelude::*, render::camera::ScalingMode};
+use bevy::prelude::*;
+use camera::*;
 use game::GamePlugin;
 use game_over::GameOverPlugin;
 use game_won::GameWonPlugin;
 use menu::*;
 
+mod camera;
 mod game;
 mod game_over;
 mod game_won;
@@ -18,17 +20,6 @@ pub enum AppState {
     GameWon,
 }
 
-fn setup(mut commands: Commands) {
-    // Camera
-    let mut camera = Camera2dBundle::default();
-    camera.projection.scaling_mode = ScalingMode::Fixed {
-        width: 1280.0,
-        height: 720.0,
-    };
-
-    commands.spawn(camera);
-}
-
 fn main() {
     App::new()
         .add_plugins(
@@ -38,15 +29,20 @@ fn main() {
                     primary_window: Some(Window {
                         title: "Breakout".to_string(),
                         resizable: false,
-                        resolution: (1280.0, 720.0).into(),
+                        resolution: camera::WINDOW_SIZE.into(),
                         ..default()
                     }),
                     ..default()
                 }),
         )
         .add_state::<AppState>()
-        .add_plugins((GamePlugin, GameOverPlugin, GameWonPlugin, MenuPlugin))
+        .add_plugins((
+            GamePlugin,
+            GameOverPlugin,
+            GameWonPlugin,
+            MenuPlugin,
+            CameraPlugin,
+        ))
         .insert_resource(ClearColor(Color::AZURE))
-        .add_systems(Startup, setup)
         .run();
 }

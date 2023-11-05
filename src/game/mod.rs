@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::AppState;
 use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
 use powerup::*;
+use scoreboard::*;
 
 use self::ball::{Ball, BallBundle, BallCollision, BallEnlargmentTimer, BallPlugin};
 use self::block::{block_go_down, Block, BlockBundle, BlockPlugin};
@@ -14,20 +15,22 @@ mod block;
 mod dmg_text;
 mod paddle;
 mod powerup;
+mod scoreboard;
 
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PowerupPlugin, BallPlugin, PaddlePlugin, BlockPlugin, DmgTextPlugin))
-            .add_systems(OnEnter(AppState::Game), setup_game)
-            .add_systems(
-                Update,
-                (
-                    bevy::window::close_on_esc,
-                    (update_scoreboard,).run_if(in_state(AppState::Game)),
-                ),
-            )
+        app.add_systems(OnEnter(AppState::Game), setup_game)
+            .add_plugins((
+                PowerupPlugin,
+                BallPlugin,
+                PaddlePlugin,
+                BlockPlugin,
+                DmgTextPlugin,
+                ScoreboardPlugin,
+            ))
+            .add_systems(Update, (bevy::window::close_on_esc,))
             .add_systems(
                 FixedUpdate,
                 (
@@ -48,7 +51,6 @@ impl Plugin for GamePlugin {
             .add_systems(
                 OnExit(AppState::Game),
                 (
-                    cleanup_game,
                     cleanup_component::<Paddle>,
                     cleanup_component::<Block>,
                     cleanup_component::<Powerup>,
@@ -64,12 +66,6 @@ impl Plugin for GamePlugin {
 const WALL_WIDTH: f32 = 1200.0;
 const WALL_HEIGHT: f32 = 600.0;
 const WALL_THICKNESS: f32 = 30.0;
-
-// Scoreboard
-const SCOREBOARD_FONT_SIZE: f32 = 40.0;
-const SCOREBOARD_TEXT_PADDING: Val = Val::Px(5.0);
-const TEXT_COLOR: Color = Color::rgb(0.5, 0.5, 1.0);
-const SCORE_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
 
 #[derive(Component, Clone, Deref, DerefMut)]
 pub struct Velocity(pub Vec2);
@@ -104,14 +100,6 @@ struct WallBundle {
 #[derive(Resource, Clone, Copy)]
 pub struct MainBox {
     pub size: Vec2,
-}
-
-#[derive(Component, Clone)]
-pub struct ScoreboardText;
-
-#[derive(Resource, Clone, Copy)]
-struct Scoreboard {
-    score: u32,
 }
 
 fn setup_game(mut commands: Commands) {
@@ -172,39 +160,6 @@ fn setup_game(mut commands: Commands) {
 
     // Blocks
     spawn_blocks(&mut commands, main_box);
-
-    // TODO: move this in his file
-    // Scoreboard
-    commands.insert_resource(Scoreboard { score: 0 });
-    commands.spawn((
-        ScoreboardText,
-        TextBundle::from_sections([
-            TextSection::new(
-                "Score: ",
-                TextStyle {
-                    font_size: SCOREBOARD_FONT_SIZE,
-                    color: TEXT_COLOR,
-                    ..default()
-                },
-            ),
-            TextSection::from_style(TextStyle {
-                font_size: SCOREBOARD_FONT_SIZE,
-                color: SCORE_COLOR,
-                ..default()
-            }),
-        ])
-        .with_style(Style {
-            position_type: PositionType::Absolute,
-            top: SCOREBOARD_TEXT_PADDING,
-            left: SCOREBOARD_TEXT_PADDING,
-            ..default()
-        }),
-    )
-    );
-}
-
-fn cleanup_game(mut commands: Commands) {
-    commands.remove_resource::<Scoreboard>();
 }
 
 fn spawn_blocks(commands: &mut Commands, main_box: MainBox) {
@@ -308,7 +263,7 @@ fn check_ball_collision(
                     continue;
                 }
 
-                scoreboard.score += 1;
+                **scoreboard += 1;
                 commands.entity(entity).despawn();
                 Powerup::spawn_powerup(&mut commands, ball_t.translation);
             }
@@ -316,11 +271,6 @@ fn check_ball_collision(
             break;
         }
     }
-}
-
-fn update_scoreboard(score: Res<Scoreboard>, mut query: Query<&mut Text, With<ScoreboardText>>) {
-    let mut text = query.single_mut();
-    text.sections[1].value = score.score.to_string();
 }
 
 fn duplicate_balls(
