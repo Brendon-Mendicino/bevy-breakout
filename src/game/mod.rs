@@ -301,7 +301,7 @@ fn check_ball_collision(
                     unreachable!()
                 };
 
-                spawn_dmg_text(&mut commands, ball_t.translation, 1);
+                spawn_dmg_text(&mut commands, ball_t.translation, **attack);
 
                 if ***health > **attack {
                     ***health -= **attack;

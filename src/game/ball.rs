@@ -36,14 +36,10 @@ impl BallBundle {
     pub fn from_trans_vel(transform: Transform, velocity: Velocity) -> Self {
         Self {
             velocity,
-            sprite: SpriteBundle {
-                transform,
-                sprite: Sprite {
-                    color: Ball::COLOR,
-                    custom_size: Some(Ball::SIZE),
-                    ..default()
-                },
-                ..default()
+            sprite: {
+                let mut sprite = Self::default().sprite;
+                sprite.transform = transform;
+                sprite
             },
             ..default()
         }

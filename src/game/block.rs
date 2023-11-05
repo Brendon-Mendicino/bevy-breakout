@@ -53,18 +53,12 @@ impl Default for BlockBundle {
 impl BlockBundle {
     pub fn from_translation(translation: Vec3) -> Self {
         Self {
-            block: Block,
-            health: Health(1),
-            collider: Collider { size: Block::SIZE },
-            sprite: SpriteBundle {
-                transform: Transform::from_translation(translation),
-                sprite: Sprite {
-                    color: Color::NAVY,
-                    custom_size: Some(Block::SIZE),
-                    ..default()
-                },
-                ..default()
+            sprite: {
+                let mut sprite = Self::default().sprite;
+                sprite.transform.translation = translation;
+                sprite
             },
+            ..default()
         }
     }
 }
