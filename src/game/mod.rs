@@ -164,7 +164,7 @@ fn setup_game(mut commands: Commands) {
 
 fn spawn_blocks(commands: &mut Commands, main_box: MainBox) {
     for w in 0..Block::WIDTH {
-        for h in 0..Block::HEIGHT {
+        for h in (0..Block::HEIGHT).step_by(2) {
             let mut pos = vec3(
                 w as f32 * (Block::SIZE.x + Block::PADDING),
                 -h as f32 * (Block::SIZE.y + Block::PADDING),
