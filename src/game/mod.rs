@@ -8,11 +8,14 @@ use scoreboard::*;
 use self::ball::{Ball, BallBundle, BallCollision, BallEnlargmentTimer, BallPlugin};
 use self::block::{block_go_down, Block, BlockBundle, BlockPlugin};
 use self::dmg_text::{spawn_dmg_text, DmgTextPlugin};
-use self::paddle::{Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
+use self::exp_bar::{ExpBar, ExpBarPlugin};
+use self::paddle::{ExpUp, Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
 
 mod ball;
 mod block;
 mod dmg_text;
+mod exp_bar;
+mod level;
 mod paddle;
 mod powerup;
 mod scoreboard;
@@ -29,6 +32,7 @@ impl Plugin for GamePlugin {
                 BlockPlugin,
                 DmgTextPlugin,
                 ScoreboardPlugin,
+                ExpBarPlugin,
             ))
             .add_systems(Update, (bevy::window::close_on_esc,))
             .add_systems(
@@ -208,7 +212,10 @@ fn check_ball_collision(
     collision_sound: Res<BallCollision>,
     mut scoreboard: ResMut<Scoreboard>,
     mut commands: Commands,
+    mut exp_up: EventWriter<ExpUp>,
 ) {
+    let mut tot_exp = 0;
+
     for (entity, transform, collider, mut health, block, paddle) in &mut colliders {
         for (ball_t, mut ball_v, attack, ball) in &mut balls {
             let collision = collide(
@@ -250,27 +257,34 @@ fn check_ball_collision(
                 ball_v.y = -ball_v.y;
             }
 
-            if block.is_some() {
-                /* If the health is not zero continue with the ball iteration */
-                let Some(ref mut health) = health else {
-                    unreachable!()
-                };
-
-                spawn_dmg_text(&mut commands, ball_t.translation, **attack);
-
-                if ***health > **attack {
-                    ***health -= **attack;
-                    continue;
-                }
-
-                **scoreboard += 1;
-                commands.entity(entity).despawn();
-                Powerup::spawn_powerup(&mut commands, ball_t.translation);
+            if block.is_none() {
+                break;
             }
+
+            /* If the health is not zero continue with the ball iteration */
+            let Some(ref mut health) = health else {
+                unreachable!()
+            };
+
+            let text_translation =
+                transform.translation + 0.5 * (ball_t.translation - transform.translation);
+            spawn_dmg_text(&mut commands, text_translation, **attack);
+
+            if ***health > **attack {
+                ***health -= **attack;
+                continue;
+            }
+
+            tot_exp += 1;
+            **scoreboard += 1;
+            commands.entity(entity).despawn();
+            Powerup::spawn_powerup(&mut commands, ball_t.translation);
 
             break;
         }
     }
+
+    exp_up.send(ExpUp(tot_exp));
 }
 
 fn duplicate_balls(

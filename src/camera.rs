@@ -10,6 +10,7 @@ impl Plugin for CameraPlugin {
 
 pub const WINDOW_SIZE: Vec2 = vec2(1280.0, 720.0);
 pub const WINDOW_TOP_LEFT: Vec2 = vec2(-0.5 * WINDOW_SIZE.x, 0.5 * WINDOW_SIZE.y);
+pub const WINDOW_BOT_LEFT: Vec2 = vec2(-0.5 * WINDOW_SIZE.x, -0.5 * WINDOW_SIZE.y);
 
 fn setup_camera(mut commands: Commands) {
     // Camera
