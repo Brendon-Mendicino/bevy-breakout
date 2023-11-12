@@ -8,7 +8,7 @@ use scoreboard::*;
 use self::ball::{Ball, BallBundle, BallCollision, BallEnlargmentTimer, BallPlugin};
 use self::block::{block_go_down, Block, BlockBundle, BlockPlugin};
 use self::dmg_text::{spawn_dmg_text, DmgTextPlugin};
-use self::exp_bar::{ExpBar, ExpBarPlugin};
+use self::exp_bar::*;
 use self::paddle::{ExpUp, Paddle, PaddleBundle, PaddleEnlargedTimer, PaddlePlugin};
 
 mod ball;
@@ -34,6 +34,7 @@ impl Plugin for GamePlugin {
                 ScoreboardPlugin,
                 ExpBarPlugin,
             ))
+            .add_state::<GameState>()
             .add_systems(Update, (bevy::window::close_on_esc,))
             .add_systems(
                 FixedUpdate,
@@ -48,7 +49,6 @@ impl Plugin for GamePlugin {
                         .after(apply_velocity)
                         .after(block_go_down),
                     check_game_over.after(check_ball_out_of_bound),
-                    check_game_won.after(check_ball_out_of_bound),
                 )
                     .run_if(in_state(AppState::Game)),
             )
@@ -64,6 +64,13 @@ impl Plugin for GamePlugin {
                 ),
             );
     }
+}
+
+#[derive(States, Default, Clone, Debug, PartialEq, Eq, Hash)]
+enum GameState {
+    #[default]
+    Looping,
+    LevelingUp,
 }
 
 // Wall
@@ -356,13 +363,6 @@ fn check_game_over(mut state: ResMut<NextState<AppState>>, query: Query<(), With
     }
 
     state.set(AppState::GameOver);
-}
-
-fn check_game_won(mut state: ResMut<NextState<AppState>>, query: Query<(), With<Block>>) {
-    if !query.is_empty() {
-        return;
-    }
-    state.set(AppState::GameWon);
 }
 
 fn cleanup_component<C>(mut commands: Commands, query: Query<Entity, With<C>>)

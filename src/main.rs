@@ -29,7 +29,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "Breakout".to_string(),
                         resizable: false,
-                        resolution: camera::WINDOW_SIZE.into(),
+                        resolution: (950.0, 450.0).into(),
                         ..default()
                     }),
                     ..default()
