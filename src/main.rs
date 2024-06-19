@@ -35,7 +35,7 @@ fn main() {
                     ..default()
                 }),
         )
-        .add_state::<AppState>()
+        .init_state::<AppState>()
         .add_plugins((
             GamePlugin,
             GameOverPlugin,

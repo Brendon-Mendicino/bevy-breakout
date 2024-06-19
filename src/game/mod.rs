@@ -1,7 +1,12 @@
 use std::time::Duration;
 
 use crate::AppState;
-use bevy::{math::*, prelude::*, sprite::collide_aabb::*};
+use bevy::math::bounding::BoundingVolume;
+use bevy::{
+    math::bounding::{Aabb2d, BoundingCircle, IntersectsVolume},
+    math::*,
+    prelude::*,
+};
 use powerup::*;
 use scoreboard::*;
 
@@ -34,7 +39,7 @@ impl Plugin for GamePlugin {
                 ScoreboardPlugin,
                 ExpBarPlugin,
             ))
-            .add_state::<GameState>()
+            .init_state::<GameState>()
             .add_systems(Update, (bevy::window::close_on_esc,))
             .add_systems(
                 FixedUpdate,
@@ -73,7 +78,7 @@ enum GameState {
     LevelingUp,
 }
 
-// Wall
+/// Wall
 const WALL_WIDTH: f32 = 1200.0;
 const WALL_HEIGHT: f32 = 600.0;
 const WALL_THICKNESS: f32 = 30.0;
@@ -111,6 +116,14 @@ struct WallBundle {
 #[derive(Resource, Clone, Copy)]
 pub struct MainBox {
     pub size: Vec2,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Collision {
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
 
 fn setup_game(mut commands: Commands) {
@@ -225,24 +238,20 @@ fn check_ball_collision(
 
     for (entity, transform, collider, mut health, block, paddle) in &mut colliders {
         for (ball_t, mut ball_v, attack, ball) in &mut balls {
-            let collision = collide(
-                ball_t.translation,
-                ball.size,
-                transform.translation,
-                collider.size,
+            let collision = collide_volume(
+                BoundingCircle::new(ball_t.translation.truncate(), ball.size.x / 2.),
+                Aabb2d::new(transform.translation.truncate(), collider.size / 2.),
             );
 
             let Some(collision) = collision else { continue };
 
             let mut reflect_x = false;
             let mut reflect_y = false;
-            let mut inside = false;
             match collision {
                 Collision::Bottom => reflect_y = ball_v.y > 0.0,
                 Collision::Top => reflect_y = ball_v.y < 0.0,
                 Collision::Right => reflect_x = ball_v.x < 0.0,
                 Collision::Left => reflect_x = ball_v.x > 0.0,
-                Collision::Inside => inside = true,
             }
 
             // Play bounce sound
@@ -251,7 +260,7 @@ fn check_ball_collision(
                 settings: PlaybackSettings::DESPAWN,
             });
 
-            if paddle.is_some() && !inside {
+            if paddle.is_some() {
                 let dir = ball_t.translation - transform.translation;
                 ball_v.0 = dir.xy().normalize() * ball_v.length();
                 break;
@@ -294,6 +303,33 @@ fn check_ball_collision(
     exp_up.send(ExpUp(tot_exp));
 }
 
+/// Returns `Some` if `volume` collides with `other`. The returned `Collision` is the
+/// side of `volume` that `other` hit.
+fn collide_volume<V: IntersectsVolume<Aabb2d> + BoundingVolume<Position = Vec2>>(
+    volume: V,
+    other: Aabb2d,
+) -> Option<Collision> {
+    if !volume.intersects(&other) {
+        return None;
+    }
+
+    let closest = other.closest_point(volume.center());
+    let offset = volume.center() - closest;
+    let side = if offset.x.abs() > offset.y.abs() {
+        if offset.x < 0. {
+            Collision::Left
+        } else {
+            Collision::Right
+        }
+    } else if offset.y > 0. {
+        Collision::Top
+    } else {
+        Collision::Bottom
+    };
+
+    Some(side)
+}
+
 fn duplicate_balls(
     commands: &mut Commands,
     query_ball: &Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
@@ -327,18 +363,19 @@ fn enlarge_balls(
 
 fn check_powerups_collision(
     mut commands: Commands,
-    query: Query<(Entity, &Transform, &PlayerCollider, &Powerup)>,
+    query_powerup: Query<(Entity, &Transform, &PlayerCollider, &Powerup)>,
     mut query_paddle: Query<(&Transform, &mut Collider, &mut Sprite), With<Paddle>>,
     mut query_ball: Query<(&Velocity, &Transform, &mut Ball, &mut Sprite), Without<Paddle>>,
 ) {
     let (paddle_transform, mut paddle_collider, mut paddle_sprite) = query_paddle.single_mut();
 
-    for (entity, transform, collider, powerup) in &query {
-        let collision = collide(
-            transform.translation,
-            collider.size,
-            paddle_transform.translation,
-            paddle_collider.size,
+    for (entity, transform, collider, powerup) in &query_powerup {
+        let collision = collide_volume(
+            Aabb2d::new(transform.translation.truncate(), collider.size / 2.),
+            Aabb2d::new(
+                paddle_transform.translation.truncate(),
+                paddle_collider.size / 2.,
+            ),
         );
 
         if collision.is_none() {

@@ -74,8 +74,8 @@ fn menu_button(
     }
 }
 
-fn menu_key(mut next_state: ResMut<NextState<AppState>>, input: Res<Input<KeyCode>>) {
-    if input.pressed(KeyCode::Return) {
+fn menu_key(mut next_state: ResMut<NextState<AppState>>, input: Res<ButtonInput<KeyCode>>) {
+    if input.pressed(KeyCode::Enter) {
         next_state.set(AppState::Game)
     }
 }

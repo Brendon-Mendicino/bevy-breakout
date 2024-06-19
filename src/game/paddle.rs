@@ -79,18 +79,18 @@ impl Default for PaddleEnlargedTimer {
 
 fn move_paddle(
     mut query: Query<(&mut Transform, &Collider), With<Paddle>>,
-    input: Res<Input<KeyCode>>,
+    input: Res<ButtonInput<KeyCode>>,
     main_box: Res<MainBox>,
     time: Res<Time>,
 ) {
     let (mut transform, collider) = query.single_mut();
     let mut direction = 0.0;
 
-    if input.pressed(KeyCode::Left) {
+    if input.pressed(KeyCode::ArrowLeft) {
         direction += -1.0;
     }
 
-    if input.pressed(KeyCode::Right) {
+    if input.pressed(KeyCode::ArrowRight) {
         direction += 1.0;
     }
 

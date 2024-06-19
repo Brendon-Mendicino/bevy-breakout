@@ -17,8 +17,8 @@ impl Plugin for GameWonPlugin {
     }
 }
 
-fn reload_game(input: Res<Input<KeyCode>>, mut state: ResMut<NextState<AppState>>) {
-    if input.pressed(KeyCode::Return) {
+fn reload_game(input: Res<ButtonInput<KeyCode>>, mut state: ResMut<NextState<AppState>>) {
+    if input.pressed(KeyCode::Enter) {
         state.set(AppState::Game);
     }
 }

@@ -23,7 +23,7 @@ pub struct ExpBar {
 }
 
 #[derive(Resource, Clone)]
-pub struct ExpBarData { 
+pub struct ExpBarData {
     bar: Entity,
 }
 
@@ -69,11 +69,10 @@ fn spawn_exp_bar(mut commands: Commands) {
                     ..default()
                 },
             ));
-        }).id();
+        })
+        .id();
 
-        commands.insert_resource(ExpBarData {
-            bar: id,
-        });
+    commands.insert_resource(ExpBarData { bar: id });
 }
 
 fn cleanup_exp_bar(mut commands: Commands, exp_bar_data: Res<ExpBarData>) {

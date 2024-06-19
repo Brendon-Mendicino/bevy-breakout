@@ -33,8 +33,10 @@ pub struct PowerupBundle {
 impl Powerup {
     const SIZE: Vec2 = Vec2::new(15.0, 15.0);
     const SPEED: Vec2 = Vec2::new(0.0, -50.0);
-    const ROTATION_SPEED: f32 = 180.0;
+    /// This is equal to half a turn per sec
+    const ROTATION_SPEED: f32 = std::f32::consts::PI;
 
+    /// Get a random [Powerup]
     fn next_rng() -> Option<Self> {
         let mut rng = rand::thread_rng();
         let index = rng.gen_range(0..POWERUP_RNGS.len());
