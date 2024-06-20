@@ -113,6 +113,7 @@ struct WallBundle {
     wall: Wall,
 }
 
+/// Box where the game is enclosed
 #[derive(Resource, Clone, Copy)]
 pub struct MainBox {
     pub size: Vec2,
